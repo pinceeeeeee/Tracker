@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Online IP Tracker</title>
+
+<!-- Leaflet CSS -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f4f4;
+    margin: 0;
+}
+header {
+    text-align: center;
+    padding: 40px 0;
+}
+.search-box {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.search-box input {
+    width: 380px;
+    padding: 12px;
+    font-size: 16px;
+}
+.search-box button {
+    padding: 12px 20px;
+    background: #7dbb2c;
+    color: white;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+}
+.search-box button:hover {
+    background: #6aa625;
+}
+.result {
+    width: 85%;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    border-top: 5px solid #7dbb2c;
+    display: none;
+}
+.result h3 {
+    background: #7dbb2c;
+    color: white;
+    padding: 10px;
+}
+.content {
+    display: flex;
+    gap: 20px;
+}
+table {
+    width: 45%;
+    border-collapse: collapse;
+}
+td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+}
+td:first-child {
+    font-weight: bold;
+    width: 40%;
+}
+#map {
+    width: 55%;
+    height: 360px;
+    border-radius: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Pince IP Tracker</h1>
+</header>
+
+<div class="search-box">
+    <input
+        type="text"
+        id="input"
+        placeholder="Masukkan IP atau URL"
+    >
+    <button onclick="trackIP()">Cari</button>
+</div>
+
+<div class="result" id="result">
+    <h3>Summary of IP's Profile Details</h3>
+    <div class="content">
+        <table>
+            <tr><td>IP Address</td><td id="ip"></td></tr>
+            <tr><td>City</td><td id="city"></td></tr>
+            <tr><td>Region</td><td id="region"></td></tr>
+            <tr><td>Country</td><td id="country"></td></tr>
+            <tr><td>ISP</td><td id="isp"></td></tr>
+            <tr><td>Organization</td><td id="org"></td></tr>
+            <tr><td>Latitude</td><td id="lat"></td></tr>
+            <tr><td>Longitude</td><td id="lon"></td></tr>
+        </table>
+        <div id="map"></div>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+let map;
+let marker;
+
+// ✅ REGEX IP YANG BENAR
+function isIP(input) {
+    const ipRegex =
+        /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+    return ipRegex.test(input);
+}
+
+async function trackIP() {
+    const inputRaw = document.getElementById("input").value.trim();
+    const result = document.getElementById("result");
+
+    if (!inputRaw) {
+        alert("Masukkan IP atau URL!");
+        return;
+    }
+
+    let ip = "";
+
+    try {
+        // =====================
+        // JIKA INPUT IP
+        // =====================
+        if (isIP(inputRaw)) {
+            ip = inputRaw;
+        }
+        // =====================
+        // JIKA INPUT URL / DOMAIN
+        // =====================
+        else {
+            const domain = inputRaw
+                .replace("https://", "")
+                .replace("http://", "")
+                .split("/")[0];
+
+            const dnsRes = await fetch(
+                `https://dns.google/resolve?name=${domain}&type=A`
+            );
+            const dnsData = await dnsRes.json();
+
+            if (!dnsData.Answer) {
+                alert("IP tidak ditemukan dari domain");
+                return;
+            }
+
+            ip = dnsData.Answer[0].data;
+        }
+
+        // =====================
+        // GEO IP (HTTPS)
+        // =====================
+        const geoRes = await fetch(`https://ipwho.is/${ip}`);
+        const data = await geoRes.json();
+
+        if (!data.success) {
+            alert("Gagal melacak IP");
+            return;
+        }
+
+        document.getElementById("ip").innerText = ip;
+        document.getElementById("city").innerText = data.city || "-";
+        document.getElementById("region").innerText = data.region || "-";
+        document.getElementById("country").innerText = data.country || "-";
+        document.getElementById("isp").innerText =
+            data.connection?.isp || "-";
+        document.getElementById("org").innerText =
+            data.connection?.org || "-";
+        document.getElementById("lat").innerText = data.latitude;
+        document.getElementById("lon").innerText = data.longitude;
+
+        result.style.display = "block";
+
+        // =====================
+        // MAP
+        // =====================
+        if (!map) {
+            map = L.map("map").setView(
+                [data.latitude, data.longitude],
+                10
+            );
+
+            L.tileLayer(
+                "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                { attribution: "© OpenStreetMap" }
+            ).addTo(map);
+        } else {
+            map.setView([data.latitude, data.longitude], 10);
+        }
+
+        if (marker) marker.remove();
+
+        marker = L.marker([data.latitude, data.longitude])
+            .addTo(map)
+            .bindPopup(
+                `<b>${data.city || "Unknown"}</b><br>${ip}<br>${data.connection?.isp || ""}`
+            )
+            .openPopup();
+
+    } catch (err) {
+        alert("Terjadi kesalahan! Periksa input atau koneksi.");
+        console.error(err);
+    }
+}
+</script>
+
+</body>
+</html>
